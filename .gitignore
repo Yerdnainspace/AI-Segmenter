@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+env/
+
+# IDE/editor state
+.idea/
+.vscode/
+
+# Runtime output
+logs/
+*.log
+*.csv
+
+# Generated model acceleration artifacts
+*.engine
+*.onnx
+*.bad
+assets/yolo_tensorrt/
+
+# Downloaded model weights and third-party runtime modules
+*.pt
+*.pth
+*.safetensors
+*.tflite
+CorridorKeyModule/
+
+# Local OS files
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+build/
+dist/
