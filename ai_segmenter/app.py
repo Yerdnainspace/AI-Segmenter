@@ -1,4 +1,4 @@
-﻿import os
+import os
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 os.environ.setdefault("GLOG_minloglevel", "3")
 os.environ.setdefault("ABSL_LOG_LEVEL", "3")
@@ -121,7 +121,7 @@ class FoolproofSyncApp(
         self.yolo_detector = None
         self.yolo_post_detector = None
         self.yolo_model_lock = threading.Lock()
-        self.yolo_status = ctk.StringVar(value="YOLO aus / als Modell waehlbar")
+        self.yolo_status = ctk.StringVar(value="YOLO aus / als Modell wählbar")
         self.yolo_detections = []
         self.yolo_selected_keys = set()
         self.yolo_seen_keys = set()
@@ -169,8 +169,8 @@ class FoolproofSyncApp(
         self.pipeline_log_path = None
         self._reset_perf_metrics()
         self.app_mode = ctk.StringVar(value="Live")
-        self.post_input_path = ctk.StringVar(value="Keine Datei gewaehlt")
-        self.post_output_path = ctk.StringVar(value="Kein Ziel gewaehlt")
+        self.post_input_path = ctk.StringVar(value="Keine Datei gewählt")
+        self.post_output_path = ctk.StringVar(value="Kein Ziel gewählt")
         self.post_status = ctk.StringVar(value="Bereit")
         self.post_is_processing = False
         decklink_devices = run_with_timeout(get_decklink_output_devices, ["Keine DeckLink-Ausgabe gefunden"], timeout=5.0)
@@ -214,7 +214,7 @@ class FoolproofSyncApp(
                 if detector.device_hint:
                     return base + "\n" + str(detector.device_hint)
                 return base
-            return f"{choice} wird ueber die Objektauswahl geladen"
+            return f"{choice} wird über die Objektauswahl geladen"
         device_label = getattr(segmenter, "device_label", None)
         device_hint = getattr(segmenter, "device_hint", None)
         if device_label:
@@ -224,6 +224,36 @@ class FoolproofSyncApp(
         if device_hint:
             return base + "\n" + str(device_hint)
         return base
+
+    def _fast_live_alpha_block_reason(self, segmenter=None):
+        if self.app_mode.get() != "Live":
+            return None
+        if self.yolo_enabled.get() and not self._is_yolo_primary_model():
+            return "YOLO-Nachbearbeitung benötigt CPU-Zwischenschritte."
+        if self.corridor_enabled.get():
+            return "CorridorKey benötigt Zwischenschritte außerhalb des Fast-Alpha-Pfads."
+        if segmenter is None:
+            with self.model_lock:
+                segmenter = self.segmenter
+        return None
+
+    def _disable_fast_live_alpha_if_blocked(self, segmenter=None):
+        reason = self._fast_live_alpha_block_reason(segmenter)
+        if reason and self.fast_live_alpha.get():
+            self.fast_live_alpha.set(False)
+            if hasattr(self, "model_status_label"):
+                status = f"{self.model_status}\nLive Fast Alpha deaktiviert: {reason}"
+                self.model_status_label.configure(text=status)
+        return reason
+
+    def _can_use_fast_live_alpha(self, segmenter):
+        if not self.fast_live_alpha.get():
+            return False
+        return self._fast_live_alpha_block_reason(segmenter) is None
+
+    def toggle_fast_live_alpha(self):
+        if self.fast_live_alpha.get():
+            self._disable_fast_live_alpha_if_blocked()
 
     def check_and_download_model(self):
         url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite"
@@ -247,6 +277,7 @@ class FoolproofSyncApp(
                 self.corridor_refiner = None
             self.corridor_status.set("CorridorKey aus")
             return
+        self._disable_fast_live_alpha_if_blocked()
         self.corridor_status.set(f"CorridorKey wird geladen ({self.corridor_device_mode.get()}) ...")
         threading.Thread(target=self._load_corridor_worker, daemon=True).start()
 
@@ -399,6 +430,7 @@ class FoolproofSyncApp(
             self.model_name.set(choice)
             self.loaded_model_name = choice
             self.model_status_label.configure(text=self.model_status)
+            self._disable_fast_live_alpha_if_blocked(self.segmenter)
             if choice not in ("YOLO", "YOLO TensorRT") and not self.yolo_enabled.get():
                 self.yolo_detections = []
                 self.yolo_selected_keys.clear()
@@ -452,4 +484,3 @@ class FoolproofSyncApp(
                 self.root.after(0, lambda: self.bg_mode.set("CustomImage"))
             except Exception as img_e:
                 print(f"Fehler beim Verarbeiten des Bildes: {img_e}")
-

@@ -16,7 +16,7 @@ class PostProcessingMixin:
         from tkinter import filedialog
 
         file_path = filedialog.askopenfilename(
-            title="Datei fuer Postproduktion waehlen",
+            title="Datei für Postproduktion wählen",
             filetypes=[
                 ("Video/Bild", "*.mp4;*.mov;*.avi;*.mkv;*.jpg;*.jpeg;*.png;*.bmp;*.webp"),
                 ("Videos", "*.mp4;*.mov;*.avi;*.mkv"),
@@ -28,7 +28,7 @@ class PostProcessingMixin:
             return
 
         self.post_input_path.set(file_path)
-        if self.post_output_path.get() == "Kein Ziel gewaehlt":
+        if self.post_output_path.get() == "Kein Ziel gewählt":
             self.post_output_path.set(self._default_post_output_path(file_path))
 
     def select_post_output(self):
@@ -45,7 +45,7 @@ class PostProcessingMixin:
             ("Alle Dateien", "*.*"),
         ]
         file_path = filedialog.asksaveasfilename(
-            title="Speicherziel waehlen",
+            title="Speicherziel wählen",
             initialfile=os.path.basename(initial),
             initialdir=os.path.dirname(initial) if os.path.dirname(initial) else None,
             defaultextension=ext if ext else ".mp4",
@@ -70,9 +70,9 @@ class PostProcessingMixin:
         input_path = self.post_input_path.get()
         output_path = self.post_output_path.get()
         if not os.path.exists(input_path):
-            self.post_status.set("Bitte zuerst eine gueltige Quelldatei waehlen.")
+            self.post_status.set("Bitte zuerst eine gueltige Quelldatei wählen.")
             return
-        if output_path == "Kein Ziel gewaehlt":
+        if output_path == "Kein Ziel gewählt":
             output_path = self._default_post_output_path(input_path)
             self.post_output_path.set(output_path)
         input_ext = os.path.splitext(input_path)[1].lower()
@@ -273,7 +273,7 @@ class PostProcessingMixin:
         ffmpeg_path = self._find_ffmpeg_executable()
         if not ffmpeg_path:
             raise RuntimeError(
-                "FFmpeg wurde nicht gefunden. Fuer transparente MOV-Dateien bitte FFmpeg installieren "
+                "FFmpeg wurde nicht gefunden. Für transparente MOV-Dateien bitte FFmpeg installieren "
                 "oder ffmpeg.exe in den Projektordner bzw. in einen ffmpeg\\bin-Unterordner legen."
             )
 
@@ -307,7 +307,7 @@ class PostProcessingMixin:
     def _process_post_transparent_video(self, input_path, output_path):
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
-            raise RuntimeError("Video konnte nicht geoeffnet werden.")
+            raise RuntimeError("Video konnte nicht geöffnet werden.")
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
@@ -386,7 +386,7 @@ class PostProcessingMixin:
 
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
-            raise RuntimeError("Video konnte nicht geoeffnet werden.")
+            raise RuntimeError("Video konnte nicht geöffnet werden.")
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
@@ -443,5 +443,3 @@ class PostProcessingMixin:
             writer.release()
 
         self.root.after(0, lambda: self._set_post_progress(1.0, f"Video fertig: {processed} Frames."))
-
-

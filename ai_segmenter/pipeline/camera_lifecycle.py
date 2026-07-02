@@ -1,4 +1,4 @@
-﻿import threading
+import threading
 import time
 
 import cv2
@@ -14,7 +14,7 @@ class CameraLifecycleMixin:
             return
         self._camera_refresh_running = True
         try:
-            self.btn_refresh_cameras.configure(text="Suche laeuft...", state="disabled")
+            self.btn_refresh_cameras.configure(text="Suche läuft...", state="disabled")
         except Exception:
             pass
 
@@ -142,7 +142,7 @@ class CameraLifecycleMixin:
 
             self._start_live_pipeline_threads()
         else:
-            self.video_label.configure(text="Fehler: Kamera besetzt oder nicht verfuegbar")
+            self.video_label.configure(text="Fehler: Kamera besetzt oder nicht verfügbar")
 
     def _stop_camera_internal(self, preserve_preview=False):
         self.is_running = False

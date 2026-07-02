@@ -55,6 +55,7 @@ class YoloControlsMixin:
                 self.yolo_status.set("YOLO-Nachbearbeitung aus")
                 self._reset_yolo_runtime_state(clear_post_detector=True)
             return
+        self._disable_fast_live_alpha_if_blocked()
         self.yolo_frame_counter = 0
         self.yolo_last_detect_time = -999.0
         self.yolo_status.set(f"YOLO-Nachbearbeitung wird geladen ({self._yolo_device_mode_note(True)}) ...")
@@ -87,12 +88,26 @@ class YoloControlsMixin:
     def _load_yolo_worker(self, model_name):
         try:
             use_yolo_trt = self.model_name.get() == "YOLO TensorRT" or self.loaded_model_name == "YOLO TensorRT"
-            detector = YoloObjectDetector(
-                model_name,
-                force_device=self._resolve_yolo_force_device(False),
-                prefer_tensorrt=use_yolo_trt,
-                build_tensorrt_engine=use_yolo_trt,
-            )
+            try:
+                detector = YoloObjectDetector(
+                    model_name,
+                    force_device=self._resolve_yolo_force_device(False),
+                    prefer_tensorrt=use_yolo_trt,
+                    build_tensorrt_engine=use_yolo_trt,
+                )
+            except Exception as trt_exc:
+                if not use_yolo_trt:
+                    raise
+                detector = YoloObjectDetector(
+                    model_name,
+                    force_device=None,
+                    prefer_tensorrt=False,
+                    build_tensorrt_engine=False,
+                )
+                detector.device_hint = (
+                    "YOLO TensorRT konnte nicht geladen werden; fallback auf CUDA-PyTorch. "
+                    f"Originalfehler: {trt_exc}"
+                )
             with self.yolo_model_lock:
                 self.yolo_detector = detector
             status = f"YOLO bereit: {model_name} ({detector.backend_label})"
@@ -108,12 +123,27 @@ class YoloControlsMixin:
 
     def _load_yolo_post_worker(self):
         try:
-            detector = YoloObjectDetector(
-                YOLO_POSTPROCESS_MODEL,
-                force_device=self._resolve_yolo_force_device(True),
-                prefer_tensorrt=self._yolo_prefer_tensorrt(),
-                build_tensorrt_engine=self._yolo_prefer_tensorrt(),
-            )
+            prefer_tensorrt = self._yolo_prefer_tensorrt()
+            try:
+                detector = YoloObjectDetector(
+                    YOLO_POSTPROCESS_MODEL,
+                    force_device=self._resolve_yolo_force_device(True),
+                    prefer_tensorrt=prefer_tensorrt,
+                    build_tensorrt_engine=prefer_tensorrt,
+                )
+            except Exception as trt_exc:
+                if not prefer_tensorrt:
+                    raise
+                detector = YoloObjectDetector(
+                    YOLO_POSTPROCESS_MODEL,
+                    force_device=None,
+                    prefer_tensorrt=False,
+                    build_tensorrt_engine=False,
+                )
+                detector.device_hint = (
+                    "YOLO TensorRT konnte nicht geladen werden; fallback auf CUDA-PyTorch. "
+                    f"Originalfehler: {trt_exc}"
+                )
             with self.yolo_model_lock:
                 self.yolo_post_detector = detector
             status = f"YOLO-Nachbearbeitung bereit: {YOLO_POSTPROCESS_MODEL} ({detector.backend_label})"
@@ -224,7 +254,7 @@ class YoloControlsMixin:
             self.root.after(
                 0,
                 lambda count=len(detections), ms=elapsed_ms, selected=selected_count: self.yolo_status.set(
-                    f"YOLO aktiv: {count} Objekte, {selected} ausgewaehlt\nAnalyse: {ms:.1f} ms"
+                    f"YOLO aktiv: {count} Objekte, {selected} ausgewählt\nAnalyse: {ms:.1f} ms"
                 )
             )
         return elapsed_ms

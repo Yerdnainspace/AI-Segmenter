@@ -9,7 +9,7 @@ if not exist .venv\Scripts\python.exe (
     if not defined PYTHON_CMD (
         echo Python wurde nicht gefunden.
         echo.
-        echo Versuche Python 3.12 automatisch ueber winget zu installieren ...
+        echo Versuche Python 3.12 automatisch über winget zu installieren ...
         where winget >nul 2>nul
         if errorlevel 1 (
             echo winget wurde nicht gefunden.

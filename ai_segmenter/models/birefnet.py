@@ -1,3 +1,4 @@
+import contextlib
 import importlib.util
 import sys
 
@@ -5,7 +6,7 @@ import cv2
 import numpy as np
 
 from ai_segmenter.config import BIREFNET_REPO_ID
-from ai_segmenter.runtime import prepare_tensorrt_import, quiet_terminal_output, select_torch_device
+from ai_segmenter.runtime import TENSORRT_RUNTIME_LOCK, prepare_tensorrt_import, quiet_terminal_output, select_torch_device
 
 
 class BiRefNetModel:
@@ -33,6 +34,7 @@ class BiRefNetModel:
         self.use_tensorrt = bool(use_tensorrt)
         self.tensorrt_enabled = False
         self.tensorrt_status = "TensorRT aus"
+        self._pytorch_model = None
         self.input_size = 512
         if force_device == "cpu":
             if self.use_tensorrt:
@@ -155,26 +157,50 @@ class BiRefNetModel:
 
         torch = self.torch
         dummy = torch.zeros((1, 3, self.input_size, self.input_size), device=self.device, dtype=self.model_dtype)
+        pytorch_model = self.model
         try:
             with torch.inference_mode():
-                self.model = torch_tensorrt.compile(
-                    self.model,
-                    ir="dynamo",
-                    inputs=[torch_tensorrt.Input(dummy.shape, dtype=self.model_dtype)],
-                    truncate_double=True,
-                    require_full_compilation=False,
-                    min_block_size=3,
-                )
-                _ = self.model(dummy)
+                with TENSORRT_RUNTIME_LOCK:
+                    self.model = torch_tensorrt.compile(
+                        self.model,
+                        ir="dynamo",
+                        inputs=[torch_tensorrt.Input(dummy.shape, dtype=self.model_dtype)],
+                        truncate_double=True,
+                        require_full_compilation=False,
+                        min_block_size=3,
+                        use_python_runtime=True,
+                    )
+                    _ = self.model(dummy)
+            self._pytorch_model = pytorch_model
             self.tensorrt_enabled = True
             self.tensorrt_status = "TensorRT aktiv"
             self.device_hint = "BiRefNet laeuft ueber Torch-TensorRT. Der erste Start kann wegen Engine-Build lange dauern."
         except Exception as exc:
-            raise RuntimeError(
-                "Torch-TensorRT konnte BiRefNet nicht kompilieren. "
-                "Das Modell bleibt nicht automatisch auf PyTorch zurueck, damit der Fehler sichtbar bleibt. "
-                f"Originalfehler: {exc}"
-            ) from exc
+            self.model = pytorch_model
+            self._pytorch_model = None
+            self.tensorrt_enabled = False
+            self.tensorrt_status = "TensorRT Fehler"
+            self.device_hint = (
+                "Torch-TensorRT konnte BiRefNet nicht stabil vorbereiten; "
+                f"fallback auf CUDA-PyTorch. Originalfehler: {exc}"
+            )
+
+    def _disable_tensorrt_after_runtime_error(self, exc):
+        if not self.tensorrt_enabled or self._pytorch_model is None:
+            return False
+        self.model = self._pytorch_model
+        self._pytorch_model = None
+        self.tensorrt_enabled = False
+        self.tensorrt_status = "TensorRT deaktiviert"
+        self.device_hint = (
+            "Torch-TensorRT ist waehrend der Inferenz fehlgeschlagen; "
+            f"fallback auf CUDA-PyTorch. Originalfehler: {exc}"
+        )
+        try:
+            self.torch.cuda.empty_cache()
+        except Exception:
+            pass
+        return True
 
     def _extract_prediction(self, output):
         torch = self.torch
@@ -201,20 +227,40 @@ class BiRefNetModel:
         tensor = tensor.to(device=self.device, dtype=self.model_dtype) / 255.0
         tensor = (tensor - self.mean) / self.std
 
-        with torch.inference_mode():
-            if self.use_autocast:
-                with torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
+        try:
+            with torch.inference_mode():
+                runtime_context = TENSORRT_RUNTIME_LOCK if self.tensorrt_enabled else contextlib.nullcontext()
+                with runtime_context:
+                    if self.use_autocast:
+                        with torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
+                            output = self.model(tensor)
+                    else:
+                        output = self.model(tensor)
+                    pred = self._extract_prediction(output).sigmoid()
+                    if pred.shape[-2:] != (out_h, out_w):
+                        pred = torch.nn.functional.interpolate(
+                            pred,
+                            size=(out_h, out_w),
+                            mode="bilinear",
+                            align_corners=False,
+                        )
+        except Exception as exc:
+            if not self._disable_tensorrt_after_runtime_error(exc):
+                raise
+            with torch.inference_mode():
+                if self.use_autocast:
+                    with torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
+                        output = self.model(tensor)
+                else:
                     output = self.model(tensor)
-            else:
-                output = self.model(tensor)
-            pred = self._extract_prediction(output).sigmoid()
-            if pred.shape[-2:] != (out_h, out_w):
-                pred = torch.nn.functional.interpolate(
-                    pred,
-                    size=(out_h, out_w),
-                    mode="bilinear",
-                    align_corners=False,
-                )
+                pred = self._extract_prediction(output).sigmoid()
+                if pred.shape[-2:] != (out_h, out_w):
+                    pred = torch.nn.functional.interpolate(
+                        pred,
+                        size=(out_h, out_w),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
 
         return pred[0].detach().squeeze().clamp(0.0, 1.0)
 
@@ -224,4 +270,3 @@ class BiRefNetModel:
         if mask.ndim == 3:
             mask = mask[0]
         return np.clip(mask * 255.0, 0, 255).astype(np.uint8)
-

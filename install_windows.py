@@ -62,6 +62,8 @@ TENSORRT_PACKAGES = [
     "tensorrt==10.16.1.11",
 ]
 
+TENSORRT_SITECUSTOMIZE_MARKER = "# AI Segmenter TensorRT bootstrap"
+
 ULTRALYTICS_SUPPORT_PACKAGES = [
     "matplotlib",
     "nvidia-ml-py",
@@ -343,7 +345,7 @@ def detect_nvidia_gpu():
     return {
         "name": scan["selected_name"] or "NVIDIA GPU",
         "driver": scan["selected_driver"] or "unbekannt",
-        "cuda": scan["selected_cuda"] or "ueber PyTorch-CUDA-Wheel",
+        "cuda": scan["selected_cuda"] or "über PyTorch-CUDA-Wheel",
     }
 
 
@@ -365,12 +367,12 @@ def format_hardware_report(scan):
         for gpu in scan["nvidia_smi"]:
             lines.append(f"- {gpu['name']} | Treiber {gpu['driver']} | CUDA {gpu['cuda']}")
     else:
-        lines.append("nvidia-smi: nicht verfuegbar oder liefert keine GPU. Windows-WMI wird als Fallback genutzt.")
+        lines.append("nvidia-smi: nicht verfügbar oder liefert keine GPU. Windows-WMI wird als Fallback genutzt.")
 
     if scan["nvidia_available"]:
-        lines.append(f"Auswahl fuer Installation: {scan['selected_name']} -> PyTorch mit CUDA")
+        lines.append(f"Auswahl für Installation: {scan['selected_name']} -> PyTorch mit CUDA")
     else:
-        lines.append("Auswahl fuer Installation: CPU-PyTorch")
+        lines.append("Auswahl für Installation: CPU-PyTorch")
     return "\n".join(lines)
 
 
@@ -402,6 +404,75 @@ def pip_uninstall(log, packages):
     args = [project_python(), "-m", "pip", "uninstall", "-y"]
     args.extend(packages)
     run_command(args, log)
+
+
+def venv_purelib():
+    code = "import sysconfig; print(sysconfig.get_paths().get('purelib', ''))"
+    result = _run_quiet([project_python(), "-c", code], timeout=20)
+    if result is None or result.returncode != 0:
+        return VENV_DIR / "Lib" / "site-packages"
+    purelib = result.stdout.strip()
+    return Path(purelib) if purelib else VENV_DIR / "Lib" / "site-packages"
+
+
+def write_tensorrt_sitecustomize(log):
+    if not sys.platform.startswith("win"):
+        return
+
+    purelib = venv_purelib()
+    purelib.mkdir(parents=True, exist_ok=True)
+    sitecustomize = purelib / "sitecustomize.py"
+    existing = sitecustomize.read_text(encoding="utf-8") if sitecustomize.exists() else ""
+    if existing and TENSORRT_SITECUSTOMIZE_MARKER not in existing:
+        log(
+            "WARNUNG: sitecustomize.py existiert bereits. "
+            "TensorRT-DLL-Bootstrap wird nicht automatisch geschrieben."
+        )
+        return
+
+    code = r'''# AI Segmenter TensorRT bootstrap
+# Ensures NVIDIA TensorRT pip wheels are importable from this virtualenv on Windows.
+import os
+import sys
+import sysconfig
+
+
+_AI_SEGMENTER_TRT_DLL_HANDLES = []
+
+
+def _ai_segmenter_prepare_tensorrt():
+    if not sys.platform.startswith("win"):
+        return
+
+    purelib = sysconfig.get_paths().get("purelib")
+    if not purelib:
+        return
+
+    for directory in (
+        os.path.join(purelib, "tensorrt_libs"),
+        os.path.join(purelib, "tensorrt_bindings"),
+    ):
+        if not os.path.isdir(directory):
+            continue
+        os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            try:
+                _AI_SEGMENTER_TRT_DLL_HANDLES.append(os.add_dll_directory(directory))
+            except OSError:
+                pass
+
+    if "tensorrt" not in sys.modules:
+        try:
+            import tensorrt_bindings as tensorrt
+        except Exception:
+            return
+        sys.modules.setdefault("tensorrt", tensorrt)
+
+
+_ai_segmenter_prepare_tensorrt()
+'''
+    sitecustomize.write_text(code, encoding="utf-8")
+    log(f"TensorRT-DLL-Bootstrap geschrieben: {sitecustomize}")
 
 
 def installed_package_version(package_name):
@@ -438,7 +509,7 @@ def ensure_opencv_contrib_last(log):
     contrib_opencv = installed_package_version("opencv-contrib-python")
 
     if not plain_opencv:
-        log("OpenCV: installiere opencv-python-Metadaten fuer ultralytics.")
+        log("OpenCV: installiere opencv-python-Metadaten für ultralytics.")
         pip_install_no_upgrade(log, ["opencv-python"], ["--no-deps"])
         plain_opencv = installed_package_version("opencv-python")
 
@@ -449,13 +520,13 @@ def ensure_opencv_contrib_last(log):
 
     if plain_opencv and contrib_opencv:
         log(
-            "OpenCV: opencv-python ist fuer ultralytics registriert; "
+            "OpenCV: opencv-python ist für ultralytics registriert; "
             "opencv-contrib-python wird als aktive OpenCV-Variante gesetzt."
         )
         pip_install_no_upgrade(log, ["opencv-contrib-python"], ["--force-reinstall", "--no-deps"])
 
     if opencv_ximgproc_available():
-        log("OpenCV: ximgproc ist verfuegbar.")
+        log("OpenCV: ximgproc ist verfügbar.")
     else:
         raise RuntimeError("OpenCV ximgproc fehlt trotz opencv-contrib-python Installation.")
 
@@ -513,7 +584,7 @@ def install_missing_packages(log, packages):
     support_missing = missing_python_packages(ULTRALYTICS_SUPPORT_PACKAGES) if ultralytics_needed else []
 
     if not missing and not support_missing:
-        log("Basispakete: alles bereits vorhanden, keine Nachinstallation noetig.")
+        log("Basispakete: alles bereits vorhanden, keine Nachinstallation nötig.")
         return []
 
     regular_missing = [package for package in missing if package != "ultralytics"]
@@ -522,7 +593,7 @@ def install_missing_packages(log, packages):
         pip_install(log, regular_missing)
 
     if support_missing:
-        log("Installiere fehlende YOLO-Abhaengigkeiten ohne OpenCV-Doppelinstallation: " + ", ".join(support_missing))
+        log("Installiere fehlende YOLO-Abhängigkeiten ohne OpenCV-Doppelinstallation: " + ", ".join(support_missing))
         pip_install(log, support_missing)
 
     if "ultralytics" in missing:
@@ -565,8 +636,8 @@ def log_torch_status(log, prefix="PyTorch"):
     cuda_label = status.get("cuda_version") or "keine CUDA-Runtime"
     device_label = status.get("device") or "CPU"
     log(
-        f"{prefix}: {status.get('version')} | CUDA verfuegbar: "
-        f"{status.get('cuda_available')} | Runtime: {cuda_label} | Geraet: {device_label}"
+        f"{prefix}: {status.get('version')} | CUDA verfügbar: "
+        f"{status.get('cuda_available')} | Runtime: {cuda_label} | Gerät: {device_label}"
     )
     return status
 
@@ -595,10 +666,10 @@ os.environ.setdefault("TERM", "dumb")
 import logging
 logging.getLogger("torch.utils.flop_counter").setLevel(logging.ERROR)
 
-print("Pruefe PyTorch/CUDA ...", flush=True)
+print("Prüfe PyTorch/CUDA ...", flush=True)
 import torch
 print("Torch:", torch.__version__, flush=True)
-print("CUDA verfuegbar:", torch.cuda.is_available(), flush=True)
+print("CUDA verfügbar:", torch.cuda.is_available(), flush=True)
 if torch.cuda.is_available():
     print("GPU:", torch.cuda.get_device_name(0), flush=True)
 
@@ -606,16 +677,16 @@ print("Lade BiRefNet in den HuggingFace-Cache ...", flush=True)
 from transformers import AutoModelForImageSegmentation
 birefnet = AutoModelForImageSegmentation.from_pretrained("ZhengPeng7/BiRefNet", trust_remote_code=True)
 if torch.cuda.is_available():
-    print("Pruefe BiRefNet-Kurzinferenz auf CUDA ...", flush=True)
+    print("Prüfe BiRefNet-Kurzinferenz auf CUDA ...", flush=True)
     birefnet = birefnet.to("cuda").eval()
     with torch.inference_mode():
         birefnet(torch.zeros((1, 3, 512, 512), device="cuda"))
 else:
-    print("BiRefNet-Kurzinferenz wird ohne CUDA uebersprungen, da sie auf CPU sehr lange dauern kann.", flush=True)
+    print("BiRefNet-Kurzinferenz wird ohne CUDA übersprungen, da sie auf CPU sehr lange dauern kann.", flush=True)
 del birefnet
 
 if torch.cuda.is_available():
-    print("Pruefe TensorRT-Pakete ...", flush=True)
+    print("Prüfe TensorRT-Pakete ...", flush=True)
     import torch_tensorrt
     import tensorrt
     print("Torch-TensorRT:", getattr(torch_tensorrt, "__version__", "unbekannt"), flush=True)
@@ -660,7 +731,7 @@ def write_launchers(log):
         """@echo off
 cd /d %~dp0
 if not exist .venv\\Scripts\\python.exe (
-    echo Die virtuelle Umgebung fehlt. Bitte zuerst installer_starten.bat ausfuehren.
+    echo Die virtuelle Umgebung fehlt. Bitte zuerst installer_starten.bat ausführen.
     pause
     exit /b 1
 )
@@ -681,7 +752,7 @@ if not exist .venv\\Scripts\\python.exe (
     if not defined PYTHON_CMD (
         echo Python wurde nicht gefunden.
         echo.
-        echo Versuche Python 3.12 automatisch ueber winget zu installieren ...
+        echo Versuche Python 3.12 automatisch über winget zu installieren ...
         where winget >nul 2>nul
         if errorlevel 1 (
             echo winget wurde nicht gefunden.
@@ -785,7 +856,7 @@ class InstallerWorker:
         self.set_status("Installiere PyTorch ...")
         torch_before = log_torch_status(self.log, "PyTorch vor Installation")
         if scan["nvidia_available"] and self.use_cuda:
-            self.log(f"Installiere CUDA-PyTorch fuer RTX/NVIDIA ueber {CUDA_TORCH_INDEX}")
+            self.log(f"Installiere CUDA-PyTorch für RTX/NVIDIA über {CUDA_TORCH_INDEX}")
             torch_args = ["--index-url", CUDA_TORCH_INDEX]
             if torch_before.get("installed") and not torch_before.get("cuda_available"):
                 self.log("Vorhandenes CPU-PyTorch wird durch CUDA-PyTorch ersetzt.")
@@ -796,7 +867,7 @@ class InstallerWorker:
             pip_install(self.log, TORCH_PACKAGES, ["--index-url", CPU_TORCH_INDEX])
         log_torch_status(self.log, "PyTorch nach Installation")
 
-        self.set_status("Installiere BiRefNet-Abhaengigkeiten ...")
+        self.set_status("Installiere BiRefNet-Abhängigkeiten ...")
         self.log("Installiere stabile BiRefNet-Paketversionen: " + ", ".join(BIREFNET_PACKAGES))
         pip_install(self.log, BIREFNET_PACKAGES)
 
@@ -804,10 +875,11 @@ class InstallerWorker:
             self.set_status("Installiere TensorRT ...")
             self.log("Installiere TensorRT-Pakete: " + ", ".join(TENSORRT_PACKAGES))
             pip_install(self.log, TENSORRT_PACKAGES)
+            write_tensorrt_sitecustomize(self.log)
         else:
-            self.log("TensorRT wird uebersprungen, weil CUDA/NVIDIA nicht aktiv gewaehlt ist.")
+            self.log("TensorRT wird übersprungen, weil CUDA/NVIDIA nicht aktiv gewählt ist.")
 
-        self.set_status("Pruefe Basispakete ...")
+        self.set_status("Prüfe Basispakete ...")
         install_missing_packages(self.log, BASE_PACKAGES)
         ensure_opencv_contrib_last(self.log)
 
@@ -818,19 +890,19 @@ class InstallerWorker:
             try:
                 warmup_models(self.log)
             except Exception as exc:
-                self.log(f"WARNUNG: Modelle konnten nicht vollstaendig vorgeladen werden: {exc}")
-                self.log("Die Installation wird fortgesetzt. Die Modelle koennen beim ersten Auswaehlen erneut laden.")
+                self.log(f"WARNUNG: Modelle konnten nicht vollständig vorgeladen werden: {exc}")
+                self.log("Die Installation wird fortgesetzt. Die Modelle können beim ersten Auswählen erneut laden.")
         else:
-            self.log("Modell-Vorladen uebersprungen. Modelle laden beim ersten Auswaehlen nach.")
+            self.log("Modell-Vorladen übersprungen. Modelle laden beim ersten Auswählen nach.")
 
-        self.set_status("Pruefe Installation ...")
+        self.set_status("Prüfe Installation ...")
         verify_code = (
             "import cv2, customtkinter, mediapipe, PIL, torch, transformers, timm, safetensors, ultralytics, CorridorKeyModule; "
             "print('OpenCV', cv2.__version__); "
             "print('OpenCV ximgproc', hasattr(cv2, 'ximgproc')); "
             "print('Transformers', transformers.__version__); "
-            "print('CUDA verfuegbar', torch.cuda.is_available()); "
-            "print('Geraet', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+            "print('CUDA verfügbar', torch.cuda.is_available()); "
+            "print('Gerät', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
         )
         if scan["nvidia_available"] and self.use_cuda:
             verify_code += (
@@ -886,7 +958,7 @@ if ctk:
             self.preload_models = ctk.BooleanVar(value=True)
             self.cuda_box = ctk.CTkCheckBox(
                 self.right,
-                text="RTX/CUDA fuer PyTorch nutzen",
+                text="RTX/CUDA für PyTorch nutzen",
                 variable=self.use_cuda,
                 state="normal" if self.hardware_scan["nvidia_available"] else "disabled",
             )
@@ -1054,7 +1126,7 @@ else:
 
 if __name__ == "__main__":
     if not sys.platform.startswith("win"):
-        print("Dieser Installer ist fuer Windows gedacht.")
+        print("Dieser Installer ist für Windows gedacht.")
     set_windows_app_id("AIObjectSeg.Installer")
     app = InstallerApp()
     app.mainloop()

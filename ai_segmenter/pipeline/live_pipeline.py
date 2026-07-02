@@ -1,10 +1,11 @@
-﻿import threading
+import threading
 import time
 
 import cv2
 import customtkinter as ctk
 
 from ai_segmenter.decklink import DeckLinkLiveInput
+from ai_segmenter.runtime import TENSORRT_RUNTIME_LOCK
 
 
 class LivePipelineMixin:
@@ -183,6 +184,7 @@ class LivePipelineMixin:
             profiler = self.pipeline_profiler
             gpu_alpha_t = None
             gpu_segmenter = None
+            fast_alpha_lock_held = False
             try:
                 infer_start = time.perf_counter()
                 if self._is_yolo_primary_model():
@@ -193,22 +195,30 @@ class LivePipelineMixin:
                     with self.model_lock:
                         segmenter = self.segmenter
                     if (
-                        self.fast_live_alpha.get()
-                        and not self.corridor_enabled.get()
-                        and not self._yolo_selection_active()
+                        self._can_use_fast_live_alpha(segmenter)
                         and hasattr(segmenter, "predict_alpha_tensor")
                         and getattr(segmenter, "device_label", "") == "CUDA"
                     ):
+                        if getattr(segmenter, "tensorrt_enabled", False):
+                            TENSORRT_RUNTIME_LOCK.acquire()
+                            fast_alpha_lock_held = True
                         gpu_alpha_t = segmenter.predict_alpha_tensor(rgb_frame)
                         gpu_segmenter = segmenter
                         mask_binary = None
                     else:
                         mask_binary = segmenter.predict_mask(rgb_frame)
+                    current_status = self._format_model_status(segmenter, self.loaded_model_name)
+                    if current_status != self.model_status:
+                        self.model_status = current_status
+                        self.root.after(0, lambda text=current_status: self.model_status_label.configure(text=text))
                 infer_ms = (time.perf_counter() - infer_start) * 1000.0
                 if profiler is not None:
                     profiler.sample("ai", infer_ms / 1000.0)
                     profiler.count("ai")
             except Exception as model_error:
+                if fast_alpha_lock_held:
+                    TENSORRT_RUNTIME_LOCK.release()
+                    fast_alpha_lock_held = False
                 self.is_running = False
                 self.pipeline_stop_event.set()
                 self.root.after(0, lambda e=model_error: self.video_label.configure(
@@ -219,13 +229,28 @@ class LivePipelineMixin:
 
             post_start = time.perf_counter()
             used_gpu_compose = False
+            compose_rgb_frame = rgb_frame
             if gpu_alpha_t is not None and gpu_segmenter is not None:
                 alpha_start = time.perf_counter()
-                output_final, alpha_2d = self._gpu_postprocess_compose(gpu_segmenter, rgb_frame, gpu_alpha_t)
+                try:
+                    output_final, alpha_2d = self._gpu_postprocess_compose(gpu_segmenter, rgb_frame, gpu_alpha_t)
+                    used_gpu_compose = True
+                except Exception as fast_alpha_error:
+                    self.fast_live_alpha.set(False)
+                    status = (
+                        "Live Fast Alpha deaktiviert: GPU-Pfad ist fehlgeschlagen; "
+                        f"normaler Alpha-Pfad wird genutzt. Originalfehler: {fast_alpha_error}"
+                    )
+                    self.root.after(0, lambda text=status: self.model_status_label.configure(text=text))
+                    mask_binary = gpu_segmenter.predict_mask(rgb_frame)
+                    alpha_2d = self._postprocess_to_alpha(rgb_frame, mask_binary)
+                finally:
+                    if fast_alpha_lock_held:
+                        TENSORRT_RUNTIME_LOCK.release()
+                        fast_alpha_lock_held = False
                 if profiler is not None:
                     profiler.sample("alpha_post", time.perf_counter() - alpha_start)
                     profiler.count("alpha_post")
-                used_gpu_compose = True
             elif not self._is_yolo_primary_model():
                 alpha_start = time.perf_counter()
                 alpha_2d = self._postprocess_to_alpha(rgb_frame, mask_binary)
@@ -317,4 +342,3 @@ class LivePipelineMixin:
                 profiler.sample("decklink_output", time.perf_counter() - output_start)
                 if wrote_output:
                     profiler.count("decklink_output")
-

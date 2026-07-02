@@ -1,10 +1,10 @@
 import contextlib
 import os
 import sys
-
+import threading
 
 _TENSORRT_DLL_DIRECTORY_HANDLES = []
-
+TENSORRT_RUNTIME_LOCK = threading.RLock()
 
 def prepare_tensorrt_import():
     if not sys.platform.startswith("win"):
@@ -62,19 +62,28 @@ def quiet_terminal_output():
     sys.stdout.flush()
     sys.stderr.flush()
     with open(os.devnull, "w") as devnull:
-        saved_stdout_fd = os.dup(stdout_fd)
-        saved_stderr_fd = os.dup(stderr_fd)
         try:
+            saved_stdout_fd = os.dup(stdout_fd)
+            saved_stderr_fd = os.dup(stderr_fd)
             os.dup2(devnull.fileno(), stdout_fd)
             os.dup2(devnull.fileno(), stderr_fd)
+        except OSError:
+            with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+                yield
+            return
+        try:
             yield
         finally:
             sys.stdout.flush()
             sys.stderr.flush()
-            os.dup2(saved_stdout_fd, stdout_fd)
-            os.dup2(saved_stderr_fd, stderr_fd)
-            os.close(saved_stdout_fd)
-            os.close(saved_stderr_fd)
+            try:
+                os.dup2(saved_stdout_fd, stdout_fd)
+                os.dup2(saved_stderr_fd, stderr_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(saved_stdout_fd)
+                os.close(saved_stderr_fd)
 
 
 def select_torch_device(torch):

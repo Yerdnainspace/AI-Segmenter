@@ -1,4 +1,4 @@
-﻿import customtkinter as ctk
+import customtkinter as ctk
 
 from ai_segmenter.camera import get_available_cameras
 from ai_segmenter.config import (
@@ -313,7 +313,7 @@ class AppLayoutMixin:
                                        value="CustomImage")
         rb_custom.pack(pady=5, anchor="w", padx=20)
 
-        self.btn_load_bg = ctk.CTkButton(control_panel, text="Finder oeffnen & Bild laden",
+        self.btn_load_bg = ctk.CTkButton(control_panel, text="Finder öffnen & Bild laden",
                                          command=self.trigger_background_load, state="disabled")
         self.btn_load_bg.pack(pady=(5, 10), padx=20, fill="x")
 
@@ -360,7 +360,7 @@ class AppLayoutMixin:
         self.chk_yolo_sync_postprocess.pack(pady=(0, 6), padx=20, anchor="w")
         self.chk_yolo_select_all = ctk.CTkCheckBox(
             control_panel,
-            text="Neue Objekte automatisch auswaehlen",
+            text="Neue Objekte automatisch auswählen",
             variable=self.yolo_select_all
         )
         self.chk_yolo_select_all.pack(pady=(0, 6), padx=20, anchor="w")
@@ -440,7 +440,8 @@ class AppLayoutMixin:
         self.chk_fast_live_alpha = ctk.CTkCheckBox(
             control_panel,
             text="Live Fast Alpha",
-            variable=self.fast_live_alpha
+            variable=self.fast_live_alpha,
+            command=self.toggle_fast_live_alpha
         )
         self.chk_fast_live_alpha.pack(pady=(0, 6), padx=20, anchor="w")
 
@@ -496,7 +497,7 @@ class AppLayoutMixin:
         self.decklink_mode_select.pack(pady=4, padx=10, fill="x")
         self.btn_refresh_decklink = ctk.CTkButton(
             self.live_frame,
-            text="DeckLink Geraete neu suchen",
+            text="DeckLink Geräte neu suchen",
             command=self.refresh_decklink_devices
         )
         self.btn_refresh_decklink.pack(pady=4, padx=10, fill="x")
@@ -545,13 +546,13 @@ class AppLayoutMixin:
         self.live_output_status_label.pack(pady=(0, 8), padx=10, fill="x")
 
         self.post_frame = ctk.CTkFrame(control_panel, fg_color="transparent")
-        self.btn_post_input = ctk.CTkButton(self.post_frame, text="Quelldatei waehlen", command=self.select_post_input)
+        self.btn_post_input = ctk.CTkButton(self.post_frame, text="Quelldatei wählen", command=self.select_post_input)
         self.btn_post_input.pack(pady=(8, 4), padx=10, fill="x")
         self.post_input_label = ctk.CTkLabel(self.post_frame, textvariable=self.post_input_path,
                                              wraplength=300, justify="left")
         self.post_input_label.pack(pady=(0, 8), padx=10, fill="x")
 
-        self.btn_post_output = ctk.CTkButton(self.post_frame, text="Speicherziel waehlen", command=self.select_post_output)
+        self.btn_post_output = ctk.CTkButton(self.post_frame, text="Speicherziel wählen", command=self.select_post_output)
         self.btn_post_output.pack(pady=4, padx=10, fill="x")
         self.post_output_label = ctk.CTkLabel(self.post_frame, textvariable=self.post_output_path,
                                               wraplength=300, justify="left")

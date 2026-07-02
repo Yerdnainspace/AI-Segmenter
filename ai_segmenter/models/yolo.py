@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from ai_segmenter.config import YOLO_TENSORRT_DIR, YOLO_TENSORRT_IMGSZ
-from ai_segmenter.runtime import prepare_tensorrt_import, quiet_terminal_output, select_torch_device
+from ai_segmenter.runtime import TENSORRT_RUNTIME_LOCK, prepare_tensorrt_import, quiet_terminal_output, select_torch_device
 
 
 class YoloObjectDetector:
@@ -61,9 +61,14 @@ class YoloObjectDetector:
                 )
 
         try:
-            with quiet_terminal_output():
-                self.model = YOLO(load_name)
-                self.names = getattr(self.model, "names", {}) or {}
+            if self.using_tensorrt:
+                with TENSORRT_RUNTIME_LOCK, quiet_terminal_output():
+                    self.model = YOLO(load_name)
+                    self.names = getattr(self.model, "names", {}) or {}
+            else:
+                with quiet_terminal_output():
+                    self.model = YOLO(load_name)
+                    self.names = getattr(self.model, "names", {}) or {}
         except Exception as exc:
             if not self.using_tensorrt:
                 raise
@@ -97,7 +102,7 @@ class YoloObjectDetector:
                 "keine vorbereitete YOLO TensorRT-Engine gefunden. "
                 "Bitte Installer erneut ausfuehren."
             )
-        with quiet_terminal_output():
+        with TENSORRT_RUNTIME_LOCK, quiet_terminal_output():
             source_model = yolo_cls(model_name)
             exported_path = source_model.export(
                 format="engine",
@@ -150,6 +155,9 @@ class YoloObjectDetector:
         }
         if not self.using_tensorrt:
             predict_kwargs["device"] = self.predict_device
+        if self.using_tensorrt:
+            with TENSORRT_RUNTIME_LOCK, quiet_terminal_output():
+                return self.model.predict(**predict_kwargs)
         with quiet_terminal_output():
             return self.model.predict(**predict_kwargs)
 
@@ -219,4 +227,3 @@ class YoloObjectDetector:
             counts[det["name"]] = counts.get(det["name"], 0) + 1
             det["key"] = f"{det['name']} {counts[det['name']]}"
         return detections
-

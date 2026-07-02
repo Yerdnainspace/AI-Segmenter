@@ -13,10 +13,10 @@ class LiveOutputMixin:
             return
         self._decklink_refresh_running = True
         try:
-            self.btn_refresh_decklink.configure(text="Suche laeuft...", state="disabled")
+            self.btn_refresh_decklink.configure(text="Suche läuft...", state="disabled")
         except Exception:
             pass
-        self.live_output_status.set("DeckLink Geraete werden gesucht ...")
+        self.live_output_status.set("DeckLink Geräte werden gesucht ...")
 
         def worker():
             try:
@@ -34,7 +34,7 @@ class LiveOutputMixin:
     def _finish_decklink_refresh(self, values, inputs=None, error=None):
         self._decklink_refresh_running = False
         try:
-            self.btn_refresh_decklink.configure(text="DeckLink Geraete neu suchen", state="normal")
+            self.btn_refresh_decklink.configure(text="DeckLink Geräte neu suchen", state="normal")
         except Exception:
             pass
         if error is not None:
@@ -64,7 +64,7 @@ class LiveOutputMixin:
         if self.current_live_source not in live_sources:
             self.current_live_source = live_sources[0]
             self.camera_select.set(self.current_live_source)
-        self.live_output_status.set("DeckLink Geraeteliste aktualisiert.")
+        self.live_output_status.set("DeckLink Geräteliste aktualisiert.")
 
     def toggle_live_output(self):
         if self.live_output_enabled.get() or self.live_key_output_enabled.get():
@@ -198,7 +198,7 @@ class LiveOutputMixin:
             if self.live_key_output_enabled.get():
                 key_device_name = self.live_key_output_device.get()
                 if key_device_name == "Keine DeckLink-Ausgabe gefunden":
-                    raise RuntimeError("Keine zweite DeckLink-Ausgabe fuer Alpha Matte gefunden.")
+                    raise RuntimeError("Keine zweite DeckLink-Ausgabe für Alpha Matte gefunden.")
                 if key_device_name == device_name and self.live_output_enabled.get():
                     raise RuntimeError("Fill und Alpha Matte muessen auf verschiedene DeckLink-Ausgaenge gelegt werden.")
                 self.decklink_key_output = DeckLinkLiveOutput(

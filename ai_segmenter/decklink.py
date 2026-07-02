@@ -13,7 +13,7 @@ def load_decklink_api():
     try:
         from comtypes import client
     except ImportError as exc:
-        raise RuntimeError("DeckLink-Ausgabe benoetigt comtypes. Installiere es mit pip install comtypes.") from exc
+        raise RuntimeError("DeckLink-Ausgabe benötigt comtypes. Installiere es mit pip install comtypes.") from exc
 
     errors = []
     for path in ["DeckLinkAPI.dll", *DECKLINK_SDK_DLL_PATHS]:
