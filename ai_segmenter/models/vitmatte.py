@@ -4,6 +4,7 @@ import sys
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from ai_segmenter.runtime import (
     TENSORRT_RUNTIME_LOCK,
@@ -96,12 +97,12 @@ class ViTMatteModel:
 
     def _prepare_inputs(self, rgb_frame):
         trimap = self._heuristic_trimap(rgb_frame)
-        image = cv2.resize(rgb_frame, (self.input_size, self.input_size), interpolation=cv2.INTER_AREA)
-        trimap = cv2.resize(trimap, (self.input_size, self.input_size), interpolation=cv2.INTER_NEAREST)
+        image = Image.fromarray(cv2.resize(rgb_frame, (self.input_size, self.input_size), interpolation=cv2.INTER_AREA))
+        trimap = Image.fromarray(cv2.resize(trimap, (self.input_size, self.input_size), interpolation=cv2.INTER_NEAREST))
         return image, trimap
 
-    def _forward(self, image_tensor, trimap_tensor):
-        inputs = self.processor(images=image_tensor, trimaps=trimap_tensor, return_tensors="pt")
+    def _forward(self, image, trimap):
+        inputs = self.processor(images=image, trimaps=trimap, return_tensors="pt")
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
         with self.torch.inference_mode():
             runtime_context = TENSORRT_RUNTIME_LOCK if self.tensorrt_enabled else contextlib.nullcontext()
@@ -165,12 +166,9 @@ class ViTMatteModel:
 
     def predict_mask(self, rgb_frame):
         image, trimap = self._prepare_inputs(rgb_frame)
-        torch = self.torch
-        image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float().to(self.device) / 255.0
-        trimap_tensor = torch.from_numpy(trimap).unsqueeze(0).unsqueeze(0).float().to(self.device) / 255.0
-        alpha = self._forward(image_tensor, trimap_tensor)
+        alpha = self._forward(image, trimap)
         if alpha.shape[-2:] != rgb_frame.shape[:2]:
-            alpha = torch.nn.functional.interpolate(
+            alpha = self.torch.nn.functional.interpolate(
                 alpha,
                 size=rgb_frame.shape[:2],
                 mode="bilinear",
