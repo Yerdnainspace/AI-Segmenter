@@ -30,6 +30,7 @@ Der Windows-Installer bereitet die benoetigten Komponenten lokal vor:
 - MediaPipe Selfie Segmenter wird von den offiziellen MediaPipe-Modellquellen geladen.
 - YOLO-Modelle werden ueber Ultralytics geladen bzw. lokal exportiert.
 - BiRefNet wird ueber Hugging Face geladen.
+- ViTMatte wird ueber Hugging Face geladen.
 - RVM ByteDance wird ueber Torch Hub geladen.
 - CorridorKeyModule und CorridorKey-Checkpoints werden aus den angegebenen Upstream-Quellen geladen.
 

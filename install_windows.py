@@ -685,6 +685,23 @@ else:
     print("BiRefNet-Kurzinferenz wird ohne CUDA übersprungen, da sie auf CPU sehr lange dauern kann.", flush=True)
 del birefnet
 
+print("Lade ViTMatte in den HuggingFace-Cache ...", flush=True)
+from transformers import VitMatteForImageMatting, VitMatteImageProcessor
+vitmatte_processor = VitMatteImageProcessor.from_pretrained("hustvl/vitmatte-base-composition-1k")
+vitmatte = VitMatteForImageMatting.from_pretrained("hustvl/vitmatte-base-composition-1k")
+del vitmatte_processor
+if torch.cuda.is_available():
+    print("Prüfe ViTMatte-Kurzinferenz auf CUDA ...", flush=True)
+    vitmatte = vitmatte.to("cuda").eval()
+    with torch.inference_mode():
+        vitmatte(
+            pixel_values=torch.zeros((1, 3, 512, 512), device="cuda"),
+            trimaps=torch.zeros((1, 1, 512, 512), device="cuda"),
+        )
+else:
+    print("ViTMatte-Kurzinferenz wird ohne CUDA übersprungen, da sie auf CPU sehr lange dauern kann.", flush=True)
+del vitmatte
+
 if torch.cuda.is_available():
     print("Prüfe TensorRT-Pakete ...", flush=True)
     import torch_tensorrt
@@ -897,7 +914,7 @@ class InstallerWorker:
 
         self.set_status("Prüfe Installation ...")
         verify_code = (
-            "import cv2, customtkinter, mediapipe, PIL, torch, transformers, timm, safetensors, ultralytics, CorridorKeyModule; "
+            "import cv2, customtkinter, mediapipe, PIL, torch, transformers, timm, safetensors, einops, kornia, ultralytics, CorridorKeyModule; "
             "print('OpenCV', cv2.__version__); "
             "print('OpenCV ximgproc', hasattr(cv2, 'ximgproc')); "
             "print('Transformers', transformers.__version__); "

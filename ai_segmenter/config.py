@@ -3,7 +3,16 @@ import os
 from .app_icons import ASSET_DIR
 
 
-MODEL_OPTIONS = ["MediaPipe Selfie", "BiRefNet", "BiRefNet TensorRT", "RVM ByteDance", "YOLO", "YOLO TensorRT"]
+MODEL_OPTIONS = [
+    "MediaPipe Selfie",
+    "BiRefNet",
+    "BiRefNet TensorRT",
+    "ViTMatte",
+    "ViTMatte TensorRT",
+    "RVM ByteDance",
+    "YOLO",
+    "YOLO TensorRT",
+]
 MAIN_AI_DEVICE_OPTIONS = ["Automatisch", "CUDA", "CPU"]
 YOLO_MODEL_OPTIONS = ["yolo11n-seg.pt", "yolo11s-seg.pt"]
 YOLO_DEVICE_OPTIONS = ["Automatisch", "TensorRT", "CPU"]
@@ -33,4 +42,3 @@ DECKLINK_OUTPUT_MODES = {
     "720p59.94 - 1280x720": ("bmdModeHD720p5994", 1280, 720, 60000.0 / 1001.0),
     "720p60 - 1280x720": ("bmdModeHD720p60", 1280, 720, 60.0),
 }
-

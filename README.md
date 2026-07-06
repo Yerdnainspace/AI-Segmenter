@@ -32,6 +32,8 @@ Der Fokus liegt auf praktischer Videoarbeit: Live-Vorschau, transparente Ausgabe
   - MediaPipe Selfie
   - BiRefNet
   - BiRefNet TensorRT
+  - ViTMatte
+  - ViTMatte TensorRT
   - RVM ByteDance
   - YOLO
   - YOLO TensorRT
@@ -102,6 +104,7 @@ Der Installer erledigt unter anderem:
 - PyTorch installieren
 - CUDA-PyTorch verwenden, wenn NVIDIA/CUDA erkannt und ausgewaehlt wird
 - BiRefNet-Abhaengigkeiten installieren
+- BiRefNet-/ViTMatte-Abhaengigkeiten installieren
 - TensorRT-Pakete installieren, wenn CUDA aktiv ist
 - OpenCV mit contrib-Modulen installieren
 - MediaPipe-Modell herunterladen
@@ -224,6 +227,14 @@ Hochwertiges Segmentierungsmodell fuer weichere und detailliertere Alpha-Masken.
 ### BiRefNet TensorRT
 
 TensorRT-Variante fuer NVIDIA/CUDA-Systeme. Der erste Start kann wegen Engine-Build und Warmup laenger dauern.
+
+### ViTMatte
+
+Transformer-basiertes Matting-Modell fuer weichere Alpha-Masken. Das Modell erzeugt intern einen heuristischen Trimap-Pfad, damit es ohne manuelle Trimap-Eingabe in den bestehenden Workflow passt.
+
+### ViTMatte TensorRT
+
+TensorRT-Variante fuer NVIDIA/CUDA-Systeme. Wenn die Torch-TensorRT-Compilation fehlschlaegt, faellt das Modell auf CUDA-PyTorch zurueck.
 
 ### RVM ByteDance
 
