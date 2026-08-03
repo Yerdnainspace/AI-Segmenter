@@ -660,6 +660,7 @@ def warmup_models(log):
 import os
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("YOLO_VERBOSE", "False")
 os.environ.setdefault("NO_COLOR", "1")
 os.environ.setdefault("TERM", "dumb")
@@ -694,10 +695,7 @@ if torch.cuda.is_available():
     print("Prüfe ViTMatte-Kurzinferenz auf CUDA ...", flush=True)
     vitmatte = vitmatte.to("cuda").eval()
     with torch.inference_mode():
-        vitmatte(
-            pixel_values=torch.zeros((1, 3, 512, 512), device="cuda"),
-            trimaps=torch.zeros((1, 1, 512, 512), device="cuda"),
-        )
+        vitmatte(pixel_values=torch.zeros((1, 4, 512, 512), device="cuda"))
 else:
     print("ViTMatte-Kurzinferenz wird ohne CUDA übersprungen, da sie auf CPU sehr lange dauern kann.", flush=True)
 del vitmatte

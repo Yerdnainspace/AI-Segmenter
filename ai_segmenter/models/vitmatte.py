@@ -131,25 +131,41 @@ class ViTMatteModel:
             raise RuntimeError("ViTMatte TensorRT benoetigt torch-tensorrt und tensorrt.") from exc
 
         torch = self.torch
-        dummy_img = torch.zeros((1, 3, self.input_size, self.input_size), device=self.device)
-        dummy_trimap = torch.zeros((1, 1, self.input_size, self.input_size), device=self.device)
+        # Der Prozessor konkateniert Bild (3 Kanaele) und Trimap (1 Kanal) bereits zu
+        # einem einzigen "pixel_values"-Tensor; das Modell selbst nimmt keine separate
+        # Trimap entgegen (siehe VitMatteForImageMatting.forward).
+        # dtype bleibt float32: _forward() reicht die vom Prozessor gelieferten
+        # float32-Werte unveraendert an das Modell weiter, das Casting passiert
+        # innerhalb von autocast, nicht am Eingabetensor.
+        num_channels = 4
+        dummy_pixel_values = torch.zeros(
+            (1, num_channels, self.input_size, self.input_size), device=self.device
+        )
         pytorch_model = self.model
+        # Muss dieselbe autocast-Umgebung wie _forward() verwenden: das Modell liegt
+        # in fp16 (self.model.half()) vor, waehrend die Eingaben fp32 bleiben. Ohne
+        # autocast castet niemand die Aktivierungen, was beim Tracing zu einem
+        # dtype-Mismatch zwischen fp32-Eingabe und fp16-Gewichten fuehrt.
+        autocast_context = (
+            torch.autocast(device_type="cuda", dtype=self.autocast_dtype)
+            if self.use_autocast
+            else contextlib.nullcontext()
+        )
         try:
             with torch.inference_mode():
-                with TENSORRT_RUNTIME_LOCK:
+                with TENSORRT_RUNTIME_LOCK, autocast_context:
                     self.model = torch_tensorrt.compile(
                         self.model,
                         ir="dynamo",
                         inputs=[
-                            torch_tensorrt.Input(dummy_img.shape, dtype=dummy_img.dtype),
-                            torch_tensorrt.Input(dummy_trimap.shape, dtype=dummy_trimap.dtype),
+                            torch_tensorrt.Input(dummy_pixel_values.shape, dtype=dummy_pixel_values.dtype),
                         ],
                         truncate_double=True,
                         require_full_compilation=False,
                         min_block_size=3,
                         use_python_runtime=True,
                     )
-                    _ = self.model(dummy_img, dummy_trimap)
+                    _ = self.model(dummy_pixel_values)
             self._pytorch_model = pytorch_model
             self.tensorrt_enabled = True
             self.tensorrt_status = "TensorRT aktiv"
